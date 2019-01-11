@@ -1,72 +1,4 @@
 apiVersion: v1
-kind: ServiceAccount
-metadata:
-  name: cockroachdb
-  labels:
-    app: cockroachdb
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: Role
-metadata:
-  name: cockroachdb
-  labels:
-    app: cockroachdb
-rules:
-- apiGroups:
-  - ""
-  resources:
-  - secrets
-  verbs:
-  - create
-  - get
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRole
-metadata:
-  name: cockroachdb
-  labels:
-    app: cockroachdb
-rules:
-- apiGroups:
-  - certificates.k8s.io
-  resources:
-  - certificatesigningrequests
-  verbs:
-  - create
-  - get
-  - watch
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: RoleBinding
-metadata:
-  name: cockroachdb
-  labels:
-    app: cockroachdb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: Role
-  name: cockroachdb
-subjects:
-- kind: ServiceAccount
-  name: cockroachdb
-  namespace: default
----
-apiVersion: rbac.authorization.k8s.io/v1beta1
-kind: ClusterRoleBinding
-metadata:
-  name: cockroachdb
-  labels:
-    app: cockroachdb
-roleRef:
-  apiGroup: rbac.authorization.k8s.io
-  kind: ClusterRole
-  name: cockroachdb
-subjects:
-- kind: ServiceAccount
-  name: cockroachdb
-  namespace: default
----
-apiVersion: v1
 kind: Service
 metadata:
   # This service is meant to be used by clients of the database. It exposes a ClusterIP that will
@@ -148,35 +80,6 @@ spec:
       labels:
         app: cockroachdb
     spec:
-      serviceAccountName: cockroachdb
-      # Init containers are run only once in the lifetime of a pod, before
-      # it's started up for the first time. It has to exit successfully
-      # before the pod's main containers are allowed to start.
-      initContainers:
-      # The init-certs container sends a certificate signing request to the
-      # kubernetes cluster.
-      # You can see pending requests using: kubectl get csr
-      # CSRs can be approved using:         kubectl certificate approve <csr name>
-      #
-      # All addresses used to contact a node must be specified in the --addresses arg.
-      #
-      # In addition to the node certificate and key, the init-certs entrypoint will symlink
-      # the cluster CA to the certs directory.
-      - name: init-certs
-        image: cockroachdb/cockroach-k8s-request-cert:0.4
-        imagePullPolicy: IfNotPresent
-        command:
-        - "/bin/ash"
-        - "-ecx"
-        - "/request-cert -namespace=${POD_NAMESPACE} -certs-dir=/cockroach-certs -type=node -addresses=localhost,127.0.0.1,$(hostname -f),$(hostname -f|cut -f 1-2 -d '.'),cockroachdb-public,cockroachdb-public.$(hostname -f|cut -f 3- -d '.') -symlink-ca-from=/var/run/secrets/kubernetes.io/serviceaccount/ca.crt"
-        env:
-        - name: POD_NAMESPACE
-          valueFrom:
-            fieldRef:
-              fieldPath: metadata.namespace
-        volumeMounts:
-        - name: certs
-          mountPath: /cockroach-certs
       affinity:
         podAntiAffinity:
           preferredDuringSchedulingIgnoredDuringExecution:
@@ -202,31 +105,27 @@ spec:
           httpGet:
             path: "/health"
             port: http
-            scheme: HTTPS
           initialDelaySeconds: 30
           periodSeconds: 5
         readinessProbe:
           httpGet:
             path: "/health?ready=1"
             port: http
-            scheme: HTTPS
           initialDelaySeconds: 10
           periodSeconds: 5
           failureThreshold: 2
         volumeMounts:
         - name: datadir
           mountPath: /cockroach/cockroach-data
-        - name: certs
-          mountPath: /cockroach/cockroach-certs
         env:
         - name: COCKROACH_CHANNEL
-          value: kubernetes-secure
+          value: kubernetes-insecure
         command:
           - "/bin/bash"
           - "-ecx"
           # The use of qualified `hostname -f` is crucial:
           # Other nodes aren't able to look up the unqualified hostname.
-          - "exec /cockroach/cockroach start --logtostderr --certs-dir /cockroach/cockroach-certs --advertise-host $(hostname -f) --http-host 0.0.0.0 --join cockroachdb-0.cockroachdb,cockroachdb-1.cockroachdb,cockroachdb-2.cockroachdb --cache 25% --max-sql-memory 25%"
+          - "exec /cockroach/cockroach start --logtostderr --insecure --advertise-host $(hostname -f) --http-host 0.0.0.0 --join cockroachdb-0.cockroachdb,cockroachdb-1.cockroachdb,cockroachdb-2.cockroachdb --cache 25% --max-sql-memory 25%"
       # No pre-stop hook is required, a SIGTERM plus some time is all that's
       # needed for graceful shutdown of a node.
       terminationGracePeriodSeconds: 60
@@ -234,8 +133,6 @@ spec:
       - name: datadir
         persistentVolumeClaim:
           claimName: datadir
-      - name: certs
-        emptyDir: {}
   podManagementPolicy: Parallel
   updateStrategy:
     type: RollingUpdate
