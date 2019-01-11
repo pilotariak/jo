@@ -38,7 +38,7 @@ Configure your `/etc/hosts` to access services :
 
         $ echo $(KUBECONFIG=./k8s/minikube/kube-config minikube ip -p pilotariak) cockroachdb.pilotariak.minikube | sudo tee -a /etc/hosts
 
-* [CockroachDB](cockroachdb/README.md)
+* [CockroachDB](services/cockroachdb/README.md)
 
 ## Contributing
 
