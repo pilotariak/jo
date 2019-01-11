@@ -1,6 +1,10 @@
 # Kubernetes
 k8s/minikube/
 
+# SQL
+sql/migrate
+sql/cockroach
+
 # Files
 .DS_Store
 /glide.lock
